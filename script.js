@@ -1,4 +1,3 @@
-
 const parseDate = d3.timeParse("%Y-%m-%d");
 
 const yearSlider   = document.getElementById("yearSlider"); 
@@ -8,18 +7,15 @@ const pollutantSel = document.getElementById("pollutant");
 const playButton   = document.getElementById("playButton");
 const tooltip      = d3.select("#tooltip");
 
-let allMonths = [];          
-let currentMonthIndex = 0;   
-let currentMonthKey;         
+let allMonths = [];
+let currentMonthIndex = 0;
 let currentLevel;
-let currentPollutant;
-
 let stateAgg, countyAgg;
 let stateFeatures, countyFeatures;
 let stateIdToName;
 
 const AQI_MIN = 0;
-const AQI_MAX = 300; 
+const AQI_MAX = 300;
 
 const width  = 1440;
 const height = 900;
@@ -107,11 +103,10 @@ function updateLegend() {
     .append("stop")
     .attr("offset", d => `${d * 100}%`)
     .attr("stop-color", d => color(AQI_MIN + d * (AQI_MAX - AQI_MIN)));
-
-  legendAxisGroup.call(legendAxis);
 }
 
 updateLegend();
+legendAxisGroup.call(legendAxis);
 
 Promise.all([
   d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json"),
@@ -119,14 +114,11 @@ Promise.all([
   d3.csv("./data.csv", d => {
     const date = parseDate(d.Date);
     const year = date.getFullYear();
-    const month = date.getMonth() + 1; 
-    const ym = `${year}-${String(month).padStart(2, "0")}`; 
-
+    const month = date.getMonth() + 1;
+    const ym = `${year}-${String(month).padStart(2, "0")}`;
     return {
       state:  d.State.trim(),
       county: d.County.trim(),
-      year,
-      month,
       ym,
       o3AQI:  +d["O3 AQI"],
       coAQI:  +d["CO AQI"],
@@ -135,16 +127,13 @@ Promise.all([
     };
   })
 ]).then(([statesTopo, countiesTopo, rows]) => {
-  allMonths = Array.from(new Set(rows.map(d => d.ym))).sort();  
+  allMonths = Array.from(new Set(rows.map(d => d.ym))).sort();
 
-  const defaultIndex = 0;
-  currentMonthIndex = defaultIndex;
-  currentMonthKey   = allMonths[defaultIndex];
-
+  currentMonthIndex = 0;
   yearSlider.min = 0;
   yearSlider.max = allMonths.length - 1;
-  yearSlider.value = defaultIndex;
-  yearText.value   = currentMonthKey;
+  yearSlider.value = 0;
+  yearText.value   = allMonths[0];
 
   stateAgg = d3.rollup(
     rows,
@@ -180,30 +169,26 @@ Promise.all([
   countyFeatures.forEach(f => {
     const countyFips = String(f.id).padStart(5, "0");
     const stateFips  = countyFips.slice(0, 2);
-    const stateName  = stateIdToName.get(stateFips);
-    f.properties.stateName = stateName || null;
+    f.properties.stateName = stateIdToName.get(stateFips) || null;
   });
 
-  currentLevel      = "state";   
-  mapLevelSlider.value = 0;    
-  currentPollutant  = pollutantSel.value;     
+  currentLevel = "state";
+  mapLevelSlider.value = 0;
 
   renderMap();
 
   yearSlider.addEventListener("input", () => {
     currentMonthIndex = +yearSlider.value;
-    currentMonthKey   = allMonths[currentMonthIndex];
-    yearText.value    = currentMonthKey;
+    yearText.value = allMonths[currentMonthIndex];
     renderMap();
   });
 
   mapLevelSlider.addEventListener("input", () => {
-  currentLevel = mapLevelSlider.value === "0" ? "state" : "county";
-  renderMap();
+    currentLevel = mapLevelSlider.value === "0" ? "state" : "county";
+    renderMap();
   });
 
   pollutantSel.addEventListener("change", () => {
-    currentPollutant = pollutantSel.value;
     renderMap();
   });
 
@@ -215,26 +200,20 @@ Promise.all([
 
     if (playing) {
       playButton.textContent = "⏸ Pause";
-
       playInterval = setInterval(() => {
         let i = +yearSlider.value;
-
         if (i >= allMonths.length - 1) {
           clearInterval(playInterval);
           playing = false;
           playButton.textContent = "▶ Play";
           return;
         }
-
         i++;
-        yearSlider.value   = i;
-        currentMonthIndex  = i;
-        currentMonthKey    = allMonths[i];
-        yearText.value     = currentMonthKey;
+        yearSlider.value = i;
+        currentMonthIndex = i;
+        yearText.value = allMonths[i];
         renderMap();
-
       }, 500);
-
     } else {
       playButton.textContent = "▶ Play";
       clearInterval(playInterval);
@@ -242,37 +221,33 @@ Promise.all([
   });
 });
 
-
 function renderMap() {
   if (!stateFeatures || !countyFeatures) return;
 
-  let features, agg, keyAccessor, labelAccessor;
+  let features, agg, keyAccessor;
 
   if (currentLevel === "state") {
-    features      = stateFeatures;
-    agg           = stateAgg;
-    keyAccessor   = d => d.properties.name;
-    labelAccessor = d => d.properties.name;
+    features = stateFeatures;
+    agg      = stateAgg;
+    keyAccessor = d => d.properties.name;
   } else {
-    features      = countyFeatures;
-    agg           = countyAgg;
-    keyAccessor   = d => `${d.properties.stateName}|${d.properties.name}`;
-    labelAccessor = d => `${d.properties.name}, ${d.properties.stateName}`;
+    features = countyFeatures;
+    agg      = countyAgg;
+    keyAccessor = d => `${d.properties.stateName}|${d.properties.name}`;
   }
+
+  const monthKey = allMonths[currentMonthIndex];
+  const pollutant = pollutantSel.value;
 
   const valuesByKey = new Map();
   agg.forEach((monthsMap, key) => {
-    const vals = monthsMap.get(currentMonthKey);
-    if (vals && vals[currentPollutant] != null && !isNaN(vals[currentPollutant])) {
-      valuesByKey.set(key, vals[currentPollutant]);
+    const vals = monthsMap.get(monthKey);
+    if (vals && vals[pollutant] != null && !isNaN(vals[pollutant])) {
+      valuesByKey.set(key, vals[pollutant]);
     }
   });
 
-  const values = Array.from(valuesByKey.values());
-  if (!values.length) {
-    console.warn("No data for", currentLevel, "in", currentMonthKey);
-    return;
-  }
+  if (valuesByKey.size === 0) return;
 
   const paths = g.selectAll("path.geo")
     .data(features, keyAccessor);
@@ -295,15 +270,12 @@ function renderMap() {
     .on("mouseover", (event, d) => {
       const key = keyAccessor(d);
       const v   = valuesByKey.get(key);
-      const label = labelAccessor(d);
       const valueText = v != null ? v.toFixed(1) : "no data";
 
       tooltip
         .style("opacity", 1)
         .html(
-          `<strong>${label}</strong><br>` +
-          `${currentPollutant}: ${valueText}<br>` +
-          `${currentMonthKey}`
+          `<strong>${key}</strong><br>${pollutant}: ${valueText}<br>${monthKey}`
         );
     })
     .on("mousemove", (event) => {
